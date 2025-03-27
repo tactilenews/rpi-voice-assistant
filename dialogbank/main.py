@@ -1,5 +1,6 @@
 from multiprocessing import Process
 from dataclasses import dataclass
+import socket
 
 from requests import HTTPError
 import os
@@ -30,9 +31,20 @@ import time
 load_dotenv()
 load_dotenv("/etc/dialogbank/dialogbank.env")
 
-TELEPHONE_PIN = 27
+
 GPIO.setmode(GPIO.BCM)
+
+TELEPHONE_PIN = 27
 GPIO.setup(TELEPHONE_PIN, GPIO.IN)
+
+RESET_BUTTON_PIN = 17
+GPIO.setup(RESET_BUTTON_PIN, GPIO.IN)
+
+WIFI_LED_PIN = 24
+GPIO.setup(WIFI_LED_PIN, GPIO.OUT)
+
+PROGRAM_LED_PIN = 23
+GPIO.setup(PROGRAM_LED_PIN, GPIO.OUT)
 
 # Google ASR Config Values
 RATE = 16000
@@ -43,6 +55,18 @@ FAILED_REQUEST = -1
 WIFI_CHECK_PERIOD = 1  # seconds
 
 log = structlog.get_logger(__name__)
+
+
+def cleanup():
+    """Turn off LEDs and clean up GPIO on exit."""
+    GPIO.output(WIFI_LED_PIN, GPIO.LOW)
+    GPIO.output(PROGRAM_LED_PIN, GPIO.LOW)
+    GPIO.cleanup()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, cleanup)
+signal.signal(signal.SIGTERM, cleanup)
 
 @dataclass
 class Settings:
@@ -210,21 +234,28 @@ def recognize_user_input(
     return utterance
 
 
-# TODO: Move WIFI Check to single LED.
-# def run_update_wifi_availability(shared_status_list: shared_memory.ShareableList):
-# def check_internet_availability(self, host="8.8.8.8", port=53, timeout=2):
-# """
-# Host: 8.8.8.8 (google-public-dns-a.google.com)
-# OpenPort: 53/tcp
-# Service: domain (DNS/TCP)
-# """
-# try:
-#     socket.setdefaulttimeout(timeout)
-#     socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
-#     return True
-# except socket.error as ex:
-#     print(ex)
-#     return False
+def run_update_wifi_availability():
+    while True:
+        if check_internet_availability():
+            GPIO.output(WIFI_LED_PIN, GPIO.HIGH)
+        else:
+            GPIO.output(WIFI_LED_PIN, GPIO.LOW)
+        time.sleep(WIFI_CHECK_PERIOD)
+
+
+def check_internet_availability(host="8.8.8.8", port=53, timeout=2):
+    """
+    Host: 8.8.8.8 (google-public-dns-a.google.com)
+    OpenPort: 53/tcp
+    Service: domain (DNS/TCP)
+    """
+    try:
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        return True
+    except socket.error as ex:
+        print(ex)
+        return False
 
 
 def run_dialogbench(
@@ -273,11 +304,23 @@ def run_dialogbench(
 def wait_until_telephone_picked_up():
     while not GPIO.input(TELEPHONE_PIN):
         time.sleep(0.2)
+        check_and_handle_reset()
 
-        # TODO: Update Code to run reset with directly connected reset button.
-        # if userInput == "p":
-        #     log.debug("[Voice Assistant]: User signal to shutdown system received. Shutting down.")
-        #     reboot()
+
+def check_and_handle_reset():
+    if GPIO.input(RESET_BUTTON_PIN):
+        log.debug(
+            "[Voice Assistant]: User signal to shutdown system received. Shutting down."
+        )
+        reboot()
+
+
+def turn_on_program_led():
+    GPIO.output(PROGRAM_LED_PIN, GPIO.HIGH)
+
+
+def turn_off_program_led():
+    GPIO.output(PROGRAM_LED_PIN, GPIO.LOW)
 
 
 def main():
@@ -313,9 +356,8 @@ def main():
             voiceflow_user_id=voiceflow_client.user_id,
         )
 
-        # TODO: Update Wifi-Process to run with single, directly connected WIFI LED.
-        # wifi_process = Process(target=run_update_wifi_availability, args=(led_status_manager.status,), daemon=True)
-        # wifi_process.start()
+        wifi_process = Process(target=run_update_wifi_availability, daemon=True)
+        wifi_process.start()
 
         wait_until_telephone_picked_up()
 
@@ -329,7 +371,9 @@ def main():
                 settings,
             ),
         )  # , daemon=True) TODO: why daemon?
+
         p.start()
+        turn_on_program_led()
 
         log.debug(
             "[Dialogbench]: Running busy waiting loop to listen for interrupt signal."
@@ -337,13 +381,12 @@ def main():
         # TODO: Check if logic covers all cases sufficiently.
         while p.is_alive() and GPIO.input(TELEPHONE_PIN):
             time.sleep(0.2)
-
-            # TODO: Update Code to run reset with directly connected reset button.
-            # if userText == "p":
-            #     log.debug("[Voice Assistant]: User signal to shutdown system received. Shutting down.")
-            #     reboot()
+            check_and_handle_reset()
 
         p.terminate()
+        log.debug("[Voice Assistant]: Terminated voice assistant.")
+        turn_off_program_led()
+
         time.sleep(1)
 
 if __name__ == "__main__":

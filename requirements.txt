@@ -10,5 +10,5 @@ structlog>=24.1.0
 google-cloud>=0.34.0
 google-cloud-speech>=2.0.1
 playsound>=1.2.2
-grpcio>=1.49.1,<2.0dev
+grpcio=1.49.1 #TODO: Currently install only works on this version, check in future if other versions work again.
 rpi-lgpio>=0.4
