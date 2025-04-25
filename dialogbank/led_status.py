@@ -1,7 +1,6 @@
 from multiprocessing import shared_memory
 import socket
-import signal
-from blinkt import set_pixel, show, clear
+from blinkt import set_pixel, show
 
 class LEDStatusManager():
     NO_DATA = 0

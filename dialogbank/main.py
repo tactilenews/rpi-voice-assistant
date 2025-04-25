@@ -210,6 +210,13 @@ def run_update_wifi_availability(shared_status_list: shared_memory.ShareableList
         time.sleep(WIFI_CHECK_PERIOD)
 
 def run_dialogbench(voiceflow_client: Voiceflow, google_asr_client: speech.SpeechClient, google_streaming_config: speech.StreamingRecognitionConfig, elevenlabs_client: ElevenLabs, shared_status_list: shared_memory.ShareableList, settings: Settings):
+
+    def sigterm_handler(signum, frame):
+        # potentially terminate children/stop audioplayer
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
     led_status_manager = LEDStatusManager(shared_status_list)
     led_status_manager.update('APPLICATION', LEDStatusManager.CONVERSATION_RUNNING)
     audio_player = audio.AudioPlayer(settings.WAIT_TONE_PATH)

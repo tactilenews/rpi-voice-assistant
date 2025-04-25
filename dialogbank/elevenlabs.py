@@ -69,7 +69,7 @@ class ElevenLabs:
 
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.voice_id}/stream"
 
-        log.debug(f"[Elevenlabs]: Generating audio", text=text)
+        log.debug("[Elevenlabs]: Generating audio", text=text)
         start = timeit.default_timer()
         response = requests.post(url, json=payload, headers=headers, params=query)
         if response.status_code != 200:
